@@ -31,7 +31,7 @@ sys.dont_write_bytecode = True
 
 parser = drd.parser
 
-parser.add_argument('--save_dir', type=str, default='./output/inference_2Blocks_v1_2block_2_unbalanced',
+parser.add_argument('--save_dir', type=str, default='./output/inference_2Blocks_v1_2block_extended_2_unbalanced',
                     help='Directory where to write event logs and checkpoint.')
 
 parser.add_argument('--pre_trained_dir', type=str, default='./output/pre_weights/inference_2Blocks',

@@ -55,19 +55,19 @@ parser.add_argument('--use_fp16', type=bool, default=False,
                     help='Train the model using fp16.')
 # Basic model parameters.
 parser.add_argument('--train_dir', type=str,
-                    default='/localscratch/ophthalmology/kaggle/train',
+        default='/localscratch/ophthalmology/kaggle/train_v2',
                     help='directory where training data is stored')
 # Basic model parameters.
 parser.add_argument('--validation_dir', type=str,
-                    default='/localscratch/ophthalmology/kaggle/validation',
+        default='/localscratch/ophthalmology/kaggle/validation_v2',
                     help='directory where training data is stored')
 # Basic model parameters.
 parser.add_argument('--balanced_train_dir', type=str,
-                    default='/home/olle/PycharmProjects/Diabetic_Retinopathy_Detection/create_tfrecords/train_balanced/',
+                    default='/localscratch/ophthalmology/kaggle/train_balanced_v2',
                     help='directory where training data is stored')
 # Basic model parameters.
 parser.add_argument('--balanced_validation_dir', type=str,
-                    default='/home/olle/PycharmProjects/Diabetic_Retinopathy_Detection/create_tfrecords/validation_balanced',
+                    default='/localscratch/ophthalmology/kaggle/validation_balanced_v2',
                     help='directory where training data is stored')
 
 FLAGS = parser.parse_args()
@@ -82,7 +82,7 @@ NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = drd_input.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 1e-4       # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.0001       # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
@@ -200,7 +200,8 @@ def inputs(eval_data):
         labels = tf.cast(labels, tf.float16)
     return images, labels
 
-def inference_2Blocks(images):
+
+def inference_2Blocks(images, keep_prob):
     resnet_output = rm.resnet_v1_2Blocks(images, num_classes=5, scope="resnet_v1_2Blocks", reuse=tf.AUTO_REUSE)
     # local3
     with tf.variable_scope('x', reuse=tf.AUTO_REUSE) as scope:
@@ -233,126 +234,6 @@ def inference_2Blocks(images):
         _activation_summary(softmax_linear)
     return(softmax_linear)
 
-def inference_2Blocks_extended(images):
-    resnet_output = rm.resnet_v1_2Blocks(images, num_classes=5, scope="resnet_v1_2Blocks", reuse=tf.AUTO_REUSE)
-    # local3
-    with tf.variable_scope('loc1', reuse=tf.AUTO_REUSE) as scope:
-        # Move everything into depth so we can perform a single matrix multiply.
-        reshape = tf.reshape(resnet_output, [FLAGS.batch_size, -1])
-        dim = reshape.get_shape()[1].value
-        weights = _variable_with_weight_decay('weights', shape=[dim, 2100],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [2100], tf.constant_initializer(0.1))
-        local1 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
-        #applying drop out
-        _activation_summary(local1)
-
-    # local4
-    with tf.variable_scope('loc2', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[2100, 1050],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [1050], tf.constant_initializer(0.1))
-        local2 = tf.nn.relu(tf.matmul(local1, weights) + biases, name=scope.name)
-        _activation_summary(local2)
-
-    # local4
-    with tf.variable_scope('loc3', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[1050, 525],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [525], tf.constant_initializer(0.1))
-        local3 = tf.nn.relu(tf.matmul(local2, weights) + biases, name=scope.name)
-        _activation_summary(local3)
-
-    # local4
-    with tf.variable_scope('loc4', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[525, 260],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [260], tf.constant_initializer(0.1))
-        local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-        _activation_summary(local4)
-
-    # local4
-    with tf.variable_scope('loc5', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[260, 130],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [130], tf.constant_initializer(0.1))
-        local5 = tf.nn.relu(tf.matmul(local4, weights) + biases, name=scope.name)
-        _activation_summary(local5)
-
-    # local4
-    with tf.variable_scope('loc6', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[130, 60],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [60], tf.constant_initializer(0.1))
-        local6 = tf.nn.relu(tf.matmul(local5, weights) + biases, name=scope.name)
-        _activation_summary(local6)
-
-    with tf.variable_scope('softmax_linear', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', [60, NUM_CLASSES],
-                                              stddev=1 / 60.0, wd=None)
-        biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                                  tf.constant_initializer(0.0))
-        softmax_linear = tf.add(tf.matmul(local6, weights), biases, name=scope.name)
-        _activation_summary(softmax_linear)
-    return(softmax_linear)
-#
-def inference_3Blocks(images):
-    resnet_output = rm.resnet_v1_3Blocks(images, num_classes=5, scope="resnet_v1_3Blocks", reuse=tf.AUTO_REUSE)
-    print("THE SHAPE IS")
-    print(resnet_output.get_shape())
-    # local3
-    with tf.variable_scope('loc1', reuse=tf.AUTO_REUSE) as scope:
-        # Move everything into depth so we can perform a single matrix multiply.
-        reshape = tf.reshape(resnet_output, [FLAGS.batch_size, -1])
-        dim = reshape.get_shape()[1].value
-        weights = _variable_with_weight_decay('weights', shape=[dim, 1050],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [1050], tf.constant_initializer(0.1))
-        local1 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
-        _activation_summary(local1)
-
-    # local4
-    with tf.variable_scope('loc2', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[1050, 525],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [525], tf.constant_initializer(0.1))
-        local2 = tf.nn.relu(tf.matmul(local1, weights) + biases, name=scope.name)
-        _activation_summary(local2)
-
-    # local4
-    with tf.variable_scope('loc3', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[525, 260],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [260], tf.constant_initializer(0.1))
-        local3 = tf.nn.relu(tf.matmul(local2, weights) + biases, name=scope.name)
-        _activation_summary(local3)
-
-    # local4
-    with tf.variable_scope('loc4', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[260, 130],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [130], tf.constant_initializer(0.1))
-        local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-        _activation_summary(local4)
-
-    # local4
-    with tf.variable_scope('loc5', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', shape=[130, 60],
-                                              stddev=0.04, wd=0.004)
-        biases = _variable_on_cpu('biases', [60], tf.constant_initializer(0.1))
-        local5 = tf.nn.relu(tf.matmul(local4, weights) + biases, name=scope.name)
-        _activation_summary(local5)
-
-    with tf.variable_scope('softmax_linear', reuse=tf.AUTO_REUSE) as scope:
-        weights = _variable_with_weight_decay('weights', [60, NUM_CLASSES],
-                                              stddev=1 / 60.0, wd=None)
-        biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                                  tf.constant_initializer(0.0))
-        softmax_linear = tf.add(tf.matmul(local5, weights), biases, name=scope.name)
-        _activation_summary(softmax_linear)
-    return(softmax_linear)
-
-
 def resnet_v1_50(images):
     return(rm.resnet_v1_4Blocks(images, num_classes=5, scope="resnet_v1_50", reuse=tf.AUTO_REUSE))
 
@@ -371,17 +252,12 @@ def loss(logits, labels):
 
   #code below multiplies logits after there labels
   weights_initializer = tf.constant_initializer(value=[1.28205128, 12.5, 11.11111111, 33.33333333, 50.])
-  class_weights = tf.get_variable(name="bias_one_tf_var",
-                             shape=[5],
-                             initializer=weights_initializer)  # Calculate the average cross entropy loss across the batch.
-  logits_weighted = tf.multiply(
-      logits,
-      class_weights,
-      name="class_weighing"
-  )
+  class_weights = tf.get_variable(name="bias_one_tf_var",shape=[5],initializer=weights_initializer)  
+  # Calculate the average cross entropy loss across the batch.
+  logits_weighted = tf.multiply(logits,class_weights,name="class_weighing")
   labels = tf.cast(labels, tf.int64)
   cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits_weighted, name='cross_entropy_per_example')
+      labels=labels, logits=logits, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 

@@ -31,7 +31,7 @@ sys.dont_write_bytecode = True
 
 parser = drd.parser
 
-parser.add_argument('--save_dir', type=str, default='./output/inference_2Blocks_v1_2block_2_unbalanced',
+parser.add_argument('--save_dir', type=str, default='./output/inference_2Blocks_v1_3blocks_2_unbalanced',
                     help='Directory where to write event logs and checkpoint.')
 
 parser.add_argument('--pre_trained_dir', type=str, default='./output/pre_weights/inference_2Blocks',
@@ -64,8 +64,8 @@ def train():
         # Build a Graph that computes the logits predictions from the
         # inference model.
         #logits1= drd.inference(images, FLAGS.n_residual_blocks)
-        logits = drd.inference_2Blocks_extended(images)
-        val_logits = drd.inference_2Blocks_extended(val_images)
+        logits = drd.inference_3Blocks(images)
+        val_logits = drd.inference_3Blocks(val_images)
 
         # calculate predictions
         predictions = tf.cast(tf.argmax(logits, axis=1), tf.int32)
